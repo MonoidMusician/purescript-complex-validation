@@ -7,15 +7,18 @@ import Control.Monad.Writer as W
 import Data.Array.NonEmpty as NEA
 import Data.Bifunctor (class Bifunctor, lmap)
 import Data.Const (Const(..))
+import Data.Functor.Compose (Compose(..))
 import Data.Functor.Mu (Mu(..))
 import Data.Functor.Variant (SProxy)
 import Data.Functor.Variant as VF
 import Data.Identity (Identity(..))
+import Data.List.Types as L
 import Data.Maybe (Maybe(..))
 import Data.Monoid (class Monoid, mempty)
+import Data.NonEmpty ((:|))
 import Data.Symbol (class IsSymbol)
 import Data.These (These(..))
-import Data.Tuple (Tuple(..))
+import Data.Tuple (Tuple(..), curry)
 import Data.Variant as V
 
 -- | A recursive variant thingy.
@@ -37,6 +40,9 @@ type FeedbackR ws es = WaRnings ws (ERrors es)
 -- | NonEmptyArray instead of a generic/free Semiring, in order to guarantee
 -- | that an error is actually thrown. Thus it does not provide `empty`; you
 -- | must supply your own error for a failure case.
+-- |
+-- | There is no need for a monad transformer like this because this isn't a
+-- | monad, and applicatives `Compose`.
 data Erroring e a
   = Success a
   | Error (NEA.NonEmptyArray (NEA.NonEmptyArray e))
@@ -67,6 +73,9 @@ instance applicativeErroring :: Applicative (Erroring e) where
 instance altErroring :: Alt (Erroring e) where
   alt a b = altThese a b <#> leftBias
 
+-- | The `Bind` instance can only take error from the first computation if it
+-- | errors, so it is not compatible with the `Apply` instance, and thus does
+-- | not form a `Monad`. Moral of the story: Use `<*>` when possible!
 instance bindErroring :: Bind (Erroring e) where
   bind (Success a) f = f a
   bind (Error es) _ = Error es
@@ -86,6 +95,41 @@ leftBias (This a) = a
 leftBias (That a) = a
 
 --------------------------------------------------------------------------------
+
+-- | Return the value inside the `Maybe` or throw the provide error.
+note :: forall e a. e -> Maybe a -> Erroring e a
+note _ (Just a) = pure a
+note e Nothing = erroring e
+
+noteR ::
+  forall s f r' r a.
+    RowCons s (VF.FProxy f) r' r =>
+    Functor f =>
+    IsSymbol s =>
+  SProxy s -> f (MuV r) -> Maybe a -> ERrors r a
+noteR s = note <<< In <<< VF.inj s
+
+noteSimple ::
+  forall s t r' r a.
+    RowCons s (VF.FProxy (Const t)) r' r =>
+    IsSymbol s =>
+  SProxy s -> t -> Maybe a -> ERrors r a
+noteSimple s = noteR s <<< Const
+
+noteTuple ::
+  forall s t d r' r a.
+    RowCons s (VF.FProxy (Const (Tuple t d))) r' r =>
+    IsSymbol s =>
+  SProxy s -> t -> d -> Maybe a -> ERrors r a
+noteTuple = curry <<< noteSimple
+
+-- | Throw an error if the result is `Nothing`.
+onFailure :: forall e a. e -> Erroring e (Maybe a) -> Erroring e a
+onFailure e c = c >>= note e
+
+hush :: forall e a. Erroring e a -> Maybe a
+hush (Error _) = Nothing
+hush (Success a) = Just a
 
 -- | Throw an error! No frills.
 erroring :: forall e a. e -> Erroring e a
@@ -115,6 +159,14 @@ errorSimple ::
     IsSymbol s =>
   SProxy s -> t -> ERrors r a
 errorSimple s = errorR s <<< Const
+
+-- | Curried form of that.
+errorTuple ::
+  forall s t d r' r a.
+    RowCons s (VF.FProxy (Const (Tuple t d))) r' r =>
+    IsSymbol s =>
+  SProxy s -> t -> d -> ERrors r a
+errorTuple = curry <<< errorSimple
 
 -- | Scope an error-ful computation, meaning that any error emitted in the
 -- | inner computation is rethrown with more context in the outer computation.
@@ -191,8 +243,14 @@ warnScopedSimple s = W.mapWriterT $ map $ map $ map $
 --------------------------------------------------------------------------------
 
 -- | Lift from Errors to Feedback, ERrors to FeedbackR
-lift :: forall f a m. Functor f => Monoid m => f a -> W.WriterT m f a
-lift m = W.WriterT (Tuple <$> m <@> mempty)
+liftW :: forall f a m. Functor f => Monoid m => f a -> W.WriterT m f a
+liftW m = W.WriterT (Tuple <$> m <@> mempty)
+
+liftCL :: forall f g. Functor f => Applicative g => f ~> Compose f g
+liftCL = Compose <<< map pure
+
+liftCR :: forall f g. Applicative f => g ~> Compose f g
+liftCR = Compose <<< pure
 
 -- | Scope both errors and warnings.
 scoped ::
@@ -220,5 +278,45 @@ escalate (W.WriterT (Success (Tuple a ws))) =
     Nothing -> Success a
 
 -- | What do you call escalating without proof that it worked?
-sisyphus :: forall e. W.WriterT (Array e) (Erroring e) ~> W.WriterT (Array e) (Erroring e)
-sisyphus = lift <<< escalate
+sisyphus :: forall e.
+  W.WriterT (Array e) (Erroring e) ~> W.WriterT (Array e) (Erroring e)
+sisyphus = liftW <<< escalate
+
+--------------------------------------------------------------------------------
+
+listT :: forall e a. L.List (Erroring e a) -> Erroring e (L.List a)
+listT L.Nil = pure L.Nil
+listT (L.Cons h t) = altThese h (listT t) <#> case _ of
+  Both h' t' -> L.Cons h' t'
+  This h' -> L.Cons h' L.Nil
+  That t' -> t'
+
+-- | Returns any and all computations that succeeded, or the total errors
+-- | if they all failed.
+neListT :: forall e a.
+  L.NonEmptyList (Erroring e a) -> Erroring e (L.NonEmptyList a)
+neListT (L.NonEmptyList (a :| tail)) = case tail of
+  L.Nil -> a <#> pure
+  L.Cons b t -> altThese a (neListT (L.NonEmptyList (b :| t))) <#> case _ of
+    Both c d -> L.nelCons c d
+    This c -> L.NonEmptyList (c :| L.Nil)
+    That d -> d
+
+-- | Generate more possibilities based on the current possibilities, erroring
+-- | if all of them fail.
+multiply :: forall e a b.
+  L.NonEmptyList a ->
+  (a -> Erroring e (L.NonEmptyList b)) ->
+  Erroring e (L.NonEmptyList b)
+multiply as f = join <$> neListT (f <$> as)
+
+-- | This takes a computation that returns many possibilities, a way of
+-- | using each possibility to create more possibilities, and returns all the
+-- | possibilities that succeeded, or the errors from those that did not.
+-- | Note that this uses the `Bind` instance, so if the computation passed in
+-- | is an error, only those errors are returned (obviously).
+manifold :: forall e a b.
+  Erroring e (L.NonEmptyList a) ->
+  (a -> Erroring e (L.NonEmptyList b)) ->
+  Erroring e (L.NonEmptyList b)
+manifold c f = c >>= \as -> multiply as f

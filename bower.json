@@ -15,7 +15,8 @@
     "purescript-variant": "^4.1.0",
     "purescript-transformers": "^3.6.0",
     "purescript-fixed-points": "^4.0.0",
-    "purescript-const": "^3.2.0"
+    "purescript-const": "^3.2.0",
+    "purescript-functors": "^2.2.0"
   },
   "devDependencies": {
     "purescript-psci-support": "^3.0.0",

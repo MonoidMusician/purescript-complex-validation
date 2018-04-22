@@ -10,6 +10,8 @@ import Control.Monad.Eff.Exception (EXCEPTION)
 import Control.Monad.Eff.Random (RANDOM)
 import Control.Monad.Gen (choose)
 import Data.Bifunctor (class Bifunctor)
+import Data.Either (Either)
+import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype)
 import Test.QuickCheck (class Arbitrary, (===))
 import Test.QuickCheck as QC
@@ -49,6 +51,9 @@ main = do
   QCLC.checkApplicative (Proxy2 :: Proxy2 (Wrapped Int))
   QCLC.checkBind (Proxy2 :: Proxy2 (Wrapped Int))
   QCLC.checkAlt (Proxy2 :: Proxy2 (Wrapped Int))
+  log "Check other alternative instances:"
+  log "Array:" *> QCLC.checkAlternative (Proxy2 :: Proxy2 Array)
+  log "Maybe:" *> QCLC.checkAlternative (Proxy2 :: Proxy2 Maybe)
 
   -- Not sure if this is supposed to hold or not, who knows.
   log "Checking 'Distributivity' law for pseudo-Alternative"
