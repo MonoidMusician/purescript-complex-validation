@@ -14,12 +14,12 @@ import Data.Functor.Variant as VF
 import Data.Identity (Identity(..))
 import Data.List.Types as L
 import Data.Maybe (Maybe(..))
-import Data.Monoid (class Monoid, mempty)
 import Data.NonEmpty ((:|))
 import Data.Symbol (class IsSymbol)
 import Data.These (These(..))
 import Data.Tuple (Tuple(..), curry)
 import Data.Variant as V
+import Prim.Row as Row
 
 -- | A recursive variant thingy.
 type MuV r = Mu (VF.VariantF r)
@@ -103,7 +103,7 @@ note e Nothing = erroring e
 
 noteR ::
   forall s f r' r a.
-    RowCons s (VF.FProxy f) r' r =>
+    Row.Cons s (VF.FProxy f) r' r =>
     Functor f =>
     IsSymbol s =>
   SProxy s -> f (MuV r) -> Maybe a -> ERrors r a
@@ -111,14 +111,14 @@ noteR s = note <<< In <<< VF.inj s
 
 noteSimple ::
   forall s t r' r a.
-    RowCons s (VF.FProxy (Const t)) r' r =>
+    Row.Cons s (VF.FProxy (Const t)) r' r =>
     IsSymbol s =>
   SProxy s -> t -> Maybe a -> ERrors r a
 noteSimple s = noteR s <<< Const
 
 noteTuple ::
   forall s t d r' r a.
-    RowCons s (VF.FProxy (Const (Tuple t d))) r' r =>
+    Row.Cons s (VF.FProxy (Const (Tuple t d))) r' r =>
     IsSymbol s =>
   SProxy s -> t -> d -> Maybe a -> ERrors r a
 noteTuple = curry <<< noteSimple
@@ -138,7 +138,7 @@ erroring = Error <<< pure <<< pure
 -- | Throw an extensible error with `Variant`.
 error ::
   forall s t r' r a.
-    RowCons s t r' r =>
+    Row.Cons s t r' r =>
     IsSymbol s =>
   SProxy s -> t -> Errors r a
 error s = erroring <<< V.inj s
@@ -146,7 +146,7 @@ error s = erroring <<< V.inj s
 -- | Throw an error with `Mu (VariantF ...)`.
 errorR ::
   forall s f r' r a.
-    RowCons s (VF.FProxy f) r' r =>
+    Row.Cons s (VF.FProxy f) r' r =>
     Functor f =>
     IsSymbol s =>
   SProxy s -> f (MuV r) -> ERrors r a
@@ -155,7 +155,7 @@ errorR s = erroring <<< In <<< VF.inj s
 -- | Throw a simple (non-recursive) error (in a context that allows recursion).
 errorSimple ::
   forall s t r' r a.
-    RowCons s (VF.FProxy (Const t)) r' r =>
+    Row.Cons s (VF.FProxy (Const t)) r' r =>
     IsSymbol s =>
   SProxy s -> t -> ERrors r a
 errorSimple s = errorR s <<< Const
@@ -163,7 +163,7 @@ errorSimple s = errorR s <<< Const
 -- | Curried form of that.
 errorTuple ::
   forall s t d r' r a.
-    RowCons s (VF.FProxy (Const (Tuple t d))) r' r =>
+    Row.Cons s (VF.FProxy (Const (Tuple t d))) r' r =>
     IsSymbol s =>
   SProxy s -> t -> d -> ERrors r a
 errorTuple = curry <<< errorSimple
@@ -173,7 +173,7 @@ errorTuple = curry <<< errorSimple
 -- | Extra information about the context is carried in the `t` type.
 errorScoped ::
   forall s t r' r a.
-    RowCons s (VF.FProxy (Tuple t)) r' r =>
+    Row.Cons s (VF.FProxy (Tuple t)) r' r =>
     IsSymbol s =>
   SProxy s -> t -> ERrors r a -> ERrors r a
 errorScoped s t = lmap (In <<< VF.inj s <<< Tuple t)
@@ -181,7 +181,7 @@ errorScoped s t = lmap (In <<< VF.inj s <<< Tuple t)
 -- | Scope a computation with no extra data in the scope, besides its label.
 errorScopedSimple ::
   forall s r' r.
-    RowCons s (VF.FProxy Identity) r' r =>
+    Row.Cons s (VF.FProxy Identity) r' r =>
     IsSymbol s =>
   SProxy s -> ERrors r ~> ERrors r
 errorScopedSimple s = lmap (In <<< VF.inj s <<< Identity)
@@ -196,7 +196,7 @@ warning = W.WriterT <<< pure <<< Tuple unit
 warn ::
   forall s t r' r m.
     Applicative m =>
-    RowCons s t r' r =>
+    Row.Cons s t r' r =>
     IsSymbol s =>
   SProxy s -> t -> Warnings r m Unit
 warn s = warning <<< pure <<< V.inj s
@@ -205,7 +205,7 @@ warn s = warning <<< pure <<< V.inj s
 warnR ::
   forall s f r' r m.
     Applicative m =>
-    RowCons s (VF.FProxy f) r' r =>
+    Row.Cons s (VF.FProxy f) r' r =>
     Functor f =>
     IsSymbol s =>
   SProxy s -> f (MuV r) -> WaRnings r m Unit
@@ -215,7 +215,7 @@ warnR s = warning <<< pure <<< In <<< VF.inj s
 warnSimple ::
   forall s t r' r m.
     Applicative m =>
-    RowCons s (VF.FProxy (Const t)) r' r =>
+    Row.Cons s (VF.FProxy (Const t)) r' r =>
     IsSymbol s =>
   SProxy s -> t -> WaRnings r m Unit
 warnSimple s = warnR s <<< Const
@@ -224,7 +224,7 @@ warnSimple s = warnR s <<< Const
 warnScoped ::
   forall s t r' r m.
     Functor m =>
-    RowCons s (VF.FProxy (Tuple t)) r' r =>
+    Row.Cons s (VF.FProxy (Tuple t)) r' r =>
     IsSymbol s =>
   SProxy s -> t -> WaRnings r m ~> WaRnings r m
 warnScoped s t = W.mapWriterT $ map $ map $ map $
@@ -234,7 +234,7 @@ warnScoped s t = W.mapWriterT $ map $ map $ map $
 warnScopedSimple ::
   forall s r' r m.
     Functor m =>
-    RowCons s (VF.FProxy Identity) r' r =>
+    Row.Cons s (VF.FProxy Identity) r' r =>
     IsSymbol s =>
   SProxy s -> WaRnings r m ~> WaRnings r m
 warnScopedSimple s = W.mapWriterT $ map $ map $ map $
@@ -255,16 +255,16 @@ liftCR = Compose <<< pure
 -- | Scope both errors and warnings.
 scoped ::
   forall s t es' es ws' ws.
-    RowCons s (VF.FProxy (Tuple t)) es' es =>
-    RowCons s (VF.FProxy (Tuple t)) ws' ws =>
+    Row.Cons s (VF.FProxy (Tuple t)) es' es =>
+    Row.Cons s (VF.FProxy (Tuple t)) ws' ws =>
     IsSymbol s =>
   SProxy s -> t -> FeedbackR ws es ~> FeedbackR ws es
 scoped s t = warnScoped s t <<< W.mapWriterT (errorScoped s t)
 
 scopedSimple ::
   forall s es' es ws' ws.
-    RowCons s (VF.FProxy Identity) es' es =>
-    RowCons s (VF.FProxy Identity) ws' ws =>
+    Row.Cons s (VF.FProxy Identity) es' es =>
+    Row.Cons s (VF.FProxy Identity) ws' ws =>
     IsSymbol s =>
   SProxy s -> FeedbackR ws es ~> FeedbackR ws es
 scopedSimple s = warnScopedSimple s <<< W.mapWriterT (errorScopedSimple s)

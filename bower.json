@@ -9,18 +9,17 @@
     "tests"
   ],
   "dependencies": {
-    "purescript-prelude": "^3.3.0",
-    "purescript-arrays": "^4.3.0",
-    "purescript-these": "^3.1.0",
-    "purescript-variant": "^4.1.0",
-    "purescript-transformers": "^3.6.0",
-    "purescript-fixed-points": "^4.0.0",
-    "purescript-const": "^3.2.0",
-    "purescript-functors": "^2.2.0"
+    "purescript-prelude": "^4.1.0",
+    "purescript-arrays": "^5.0.0",
+    "purescript-these": "^4.0.0",
+    "purescript-variant": "^5.0.0",
+    "purescript-transformers": "^4.1.0",
+    "purescript-fixed-points": "^5.1.0",
+    "purescript-functors": "^3.0.1"
   },
   "devDependencies": {
-    "purescript-psci-support": "^3.0.0",
-    "purescript-quickcheck-laws": "^3.0.1"
+    "purescript-psci-support": "^4.0.0",
+    "purescript-quickcheck-laws": "^4.0.0"
   },
   "authors": [
     "Nicholas Scheel <monoidmusician@gmail.com>"
